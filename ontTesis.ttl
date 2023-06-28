@@ -1,0 +1,40 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix sc: <https://schema.org/> .
+@prefix ex: <http://newsOnt.com/> .
+
+ex:Page a rdfs:Class; 
+	rdfs:subClassOf sc:CreativeWork.
+
+ex:text a rdf:Property;
+	rdfs:domain sc:CreativeWork;
+	rdfs:range rdfs:Literal.
+
+ex:embending a rdf:Property;
+	rdfs:domain sc:CreativeWork;
+	rdfs:range rdfs:Literal.
+
+ex:generator a rdf:Property;
+	rdfs:domain sc:Newspaper;
+	rdfs:range rdfs:Literal.
+
+ex:dateAccepted a rdf:Property;
+	rdfs:domain sc:Newspaper;
+	rdfs:range rdfs:Literal.
+
+ex:Citation a rdfs:Class.
+
+ex:hasCitation a rdf:Property;
+	rdfs:domain sc:Newspaper;
+	rdfs:range ex:Citation.
+
+ex:hasPage a rdf:Property;
+	rdfs:domain sc:Newspaper;
+	rdfs:range ex:Page.
+
+ex:citationAbstractUrl a rdf:Property;
+	rdfs:domain ex:Citation;
+	rdfs:range rdfs:Literal.
+
+
