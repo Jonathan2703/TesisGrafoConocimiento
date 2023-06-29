@@ -26,31 +26,36 @@ class LimpiezaTexto(OWWidget):
     def texto_corregido(self):
         # lista para almacenar los textos corregidos
         textos_corregidos = []
+    
         # procesar cada entrada de texto en self.inputtext
         for entrada in self.inputtext:
             nombre = entrada["name"]
             texto_original = entrada["text"].value
-            id = entrada["id"]
-            idpage = entrada["idpage"]
-            
-            # enviar la solicitud POST al endpoint /corregir_texto
-            response = httpx.post("http://127.0.0.1:8000/corregir_texto?texto=" + texto_original, timeout=420 )
+            id_perio = entrada["id"].value
+            idpage = entrada["idpage"].value
+        
+            # construir el cuerpo de la solicitud en formato JSON
+            body = {"texto": texto_original}
+        
+            # enviar la solicitud POST al endpoint /corregir_texto con el cuerpo en JSON
+            response = httpx.post("http://127.0.0.1:8000/corregir_texto", json=body, timeout=1800)
+        
             if response.status_code == 200:
                 texto_corregido = response.json()["texto_corregido"]
             else:
                 print("Error en la solicitud POST")
                 # manejar el error de la solicitud POST
                 texto_corregido = ""
-            
+        
             # agregar el texto corregido a la lista de textos corregidos
             textos_corregidos.append({
                 "name": nombre,
                 "text": texto_corregido,
-                "id": id,
+                "id": id_perio,
                 "idpage": idpage
             })
         # crear la lista de salida utilizando la sintaxis de comprensión de listas
-        salida = [{"name": entrada["name"], "text": entrada["text"],"id": id, "idpage": idpage} for entrada in textos_corregidos]
+        salida = [{"name": entrada["name"], "text": entrada["text"],"id": entrada["id"], "idpage": entrada["idpage"]} for entrada in textos_corregidos]
 
         # enviar la lista de salida a través de la conexión de salida
         domain = Domain([], metas=[StringVariable("name"), StringVariable("text"), StringVariable("id"), StringVariable("idpage")])

@@ -3,17 +3,22 @@ from fastapi import FastAPI
 import re
 from openai.embeddings_utils import get_embedding
 from SPARQLWrapper import SPARQLWrapper, JSON
+from pydantic import BaseModel
 
 app = FastAPI()
 
+class TextoEntrada(BaseModel):
+    texto: str
 
-openai.api_key = "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"
+openai.api_key = "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"
+
 
 @app.post("/corregir_texto")
-async def corregir_texto(texto: str):
+async def corregir_texto(texto_entrada: TextoEntrada):
+    texto = texto_entrada.texto
     texto = texto.replace('\n', ' ')
     # limpiar el texto eliminando caracteres especiales y números
-    texto_limpio = re.sub('[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]', ' ', texto)
+    texto_limpio = re.sub('[^a-zA-Záéíóú  ÁÉÍÓÚñÑüÜ\s]', ' ', texto)
     texto_limpio = texto_limpio.lower()
     
     maxTokens = 16000
@@ -60,47 +65,48 @@ async def corregir_texto(texto: str):
 
 
 @app.post("/find_entities")
-async def find_entities(texto: str):
-    LIMIT = 512
-    entidades = []
-    if len(texto) > LIMIT:
-        # Dividir el texto en partes más pequeñas
-        partes = re.findall(r'\b\w+\b', texto)
-        partes = [partes[i:i+LIMIT] for i in range(0, len(partes), LIMIT)]
-        partes = [' '.join(p) for p in partes]
-
-        # Analizar cada parte por separado y concatenar los resultados
-        resultados = []
+async def find_entities(texto_entrada: TextoEntrada):
+    texto = texto_entrada.texto
+    maxTokens = 16000
+    
+    # verificar si el texto original es más largo que el límite de OpenAI
+    if len(texto) > maxTokens:
+        # dividir el texto en partes de 2048 caracteres
+        partes = [texto[i:i+maxTokens] for i in range(0, len(texto), maxTokens)]
+        
+        # corregir cada parte del texto
+        entidades = []
         for parte in partes:
-            res = openai.Completion.create(
-                engine='text-davinci-002',
-                prompt=f"Sacame las entidades del siguiente texto como una lista: \"{parte}\"",
-                max_tokens=1024,
-                n=1,
-                stop=None,
-                temperature=0.5,
+            correccion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo-16k",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "Sacame las entidades de este texto, y devuelveme solo las entidades separadas por una coma porfavor:"},
+                    {"role": "assistant", "content": parte}
+                ]
             )
-            resultados.append(res.choices[0].text)
-        resultado_completo = ' '.join(resultados)
+            
+            respuesta = correccion.choices[0].message["content"]
+            entidades.append(respuesta)
+            
+        # unir las partes del texto corregido en una sola variable
+        entidades_sacadas = " ".join(entidades)
     else:
-        # Analizar el texto completo
-        res = openai.Completion.create(
-            engine='text-davinci-002',
-            prompt=f"Sacame las entidades del siguiente texto como una lista: \"{texto}\"",
-            max_tokens=1024,
-            n=1,
-            stop=None,
-            temperature=0.5,
-        )
-        resultado_completo = res.choices[0].text
+        # corregir el texto original
 
-    # Procesar el resultado para extraer las entidades
-    entidades = []
-    for linea in resultado_completo.splitlines():
-        if len(linea) > 0:
-            entidades.append(linea)
-    # Retornar las entidades encontradas
-    return {"entidades": entidades}
+        correccion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-16k",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Sacame las entidades de este texto, y devuelveme solo las entidades separadas por una coma porfavor:"},
+                {"role": "assistant", "content": texto}
+            ], 
+            timeout=1800
+        )
+        
+        entidades_sacadas = correccion.choices[0].message["content"]
+    
+    return {"entidades": entidades_sacadas}
 
 def get_embedding(text, model="text-embedding-ada-002"):
     text = text.replace("\n", "")
@@ -139,45 +145,34 @@ def search_term(term: str):
     # Establecer el punto final de DBpedia en español
     sparql = SPARQLWrapper("https://es.dbpedia.org/sparql")
 
-    # Dividir la palabra recibida si contiene más de una palabra
-    palabras = term.split()
+    # Capitalizar la primera letra del término de búsqueda
+    term = term.capitalize()
 
-    # Lista de términos a excluir
-    terminos_excluidos = ["el", "la", "los", "las", "del", "al", "un", "una", "de", "a", "del"]
+    # Escapar caracteres especiales en el término de búsqueda
+    term = term.replace("'", "\\'")
 
-    # Escapar caracteres especiales en cada palabra de búsqueda
-    palabras = [palabra for palabra in palabras if palabra.lower() not in terminos_excluidos]
+    # Definir la consulta SPARQL para buscar el término en español
+    query = f"""
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?s
+        WHERE {{
+            ?s rdfs:label "{term}"@es .
+        }}
+        LIMIT 1
+    """
 
-    uris = []
+    # Establecer la consulta SPARQL
+    sparql.setQuery(query)
 
-    # Buscar cada palabra individualmente en DBpedia
-    for palabra in palabras:
-        # Definir la consulta SPARQL para buscar la palabra en español
-        palabra = palabra.capitalize()
-        query = f"""
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            SELECT ?s
-            WHERE {{
-                ?s rdfs:label "{palabra}"@es .
-            }}
-            LIMIT 1
-        """
+    # Especificar que el resultado de la consulta sea en formato JSON
+    sparql.setReturnFormat(JSON)
 
-        # Establecer la consulta SPARQL
-        sparql.setQuery(query)
+    # Ejecutar la consulta y obtener los resultados
+    results = sparql.query().convert()
 
-        # Especificar que el resultado de la consulta sea en formato JSON
-        sparql.setReturnFormat(JSON)
-
-        # Ejecutar la consulta y obtener los resultados
-        results = sparql.query().convert()
-
-        # Procesar los resultados y obtener la URI del primer resultado
-        if "results" in results and "bindings" in results["results"] and len(results["results"]["bindings"]) > 0:
-            uri = results["results"]["bindings"][0]["s"]["value"]
-            uris.append(uri)
-
-    if len(uris) > 0:
-        return {"uris": uris}
+    # Procesar los resultados y obtener la URI del primer resultado
+    if "results" in results and "bindings" in results["results"] and len(results["results"]["bindings"]) > 0:
+        uri = results["results"]["bindings"][0]["s"]["value"]
+        return {"uri": uri}
     else:
-        return {"uris": None}
+        return {"uri": None}

@@ -24,7 +24,7 @@ class ReconocimientoEntidates(OWWidget):
         
     
     def find_entity(self):
-        url = "http://127.0.0.1:8000/find_entities?texto="
+        url = "http://127.0.0.1:8000/find_entities"
         textos_corregidos = []
         for row in self.textperiodicos:
             name = row["name"]
@@ -32,12 +32,15 @@ class ReconocimientoEntidates(OWWidget):
             id2 = row["id"]
             id_page = row["idpage"]
             
+            # construir el cuerpo de la solicitud en formato JSON
+            body = {"texto": texto}
+
             # Enviar solicitud HTTP POST con el texto a corregir
-            response = httpx.post(url+texto, timeout=420)
+            response = httpx.post(url, json=body, timeout=1800)
             
             # Verificar si la solicitud fue exitosa
             if response.status_code == 200:
-                entidades = json.loads(response.text)["entidades"][0]
+                entidades = response.json()["entidades"]
             else:
                 # En caso de error, establecer las entidades como una lista vacía
                 entidades = []
